@@ -1,0 +1,9 @@
+.build
+.swiftpm/
+# Never commit signing material.
+*.p12
+*.cer
+*.key
+.env
+.DS_Store
+dist/
