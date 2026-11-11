@@ -1,6 +1,6 @@
 // swift-tools-version:6.0
 //
-// Zapmirror (private): show and control an Android phone on a Mac. See docs/MIRRORING-PLAN.md.
+// Zapmirror: show and control an Android phone on a Mac. See docs/MIRRORING-PLAN.md.
 //   Scripts/build-app.sh        the app, in dist/Zapmirror.app
 //   Scripts/test.sh             the tests (plain `swift test` with full Xcode)
 
