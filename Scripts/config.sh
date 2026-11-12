@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034
 
 APP_NAME="Zapmirror"
-BUNDLE_ID="${ZAPMIRROR_BUNDLE_ID:-app.zapmirror.Zapmirror}"   # change before publishing (needs the domain)
+BUNDLE_ID="${ZAPMIRROR_BUNDLE_ID:-io.github.kunapas.Zapmirror}"
 APP_VERSION="1.0.0"
 APP_BUILD="1"
 MIN_MACOS="14.0"
