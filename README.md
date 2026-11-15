@@ -13,6 +13,20 @@
 
 > Status: **early (1.0.0)**. Tested on a Pixel 9 Pro XL with Android 17. Please report phones that misbehave.
 
+## Install
+
+1. Download the latest **Zapmirror** zip from [Releases](https://github.com/kunapas/zapmirror/releases/latest).
+2. Open it and drag **Zapmirror** into your Applications folder.
+3. Open Zapmirror. The first time, macOS says it can't verify the app, because this build isn't signed with an Apple
+   developer certificate yet. To allow it: open **System Settings → Privacy & Security**, scroll down to the
+   message about Zapmirror and click **Open Anyway**. You only do this once.
+
+Prefer the Terminal? This does the same as step 3:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Zapmirror.app
+```
+
 ## What you need
 
 - A Mac with macOS 14 or later.
