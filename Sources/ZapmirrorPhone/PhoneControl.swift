@@ -23,6 +23,8 @@ public enum PhoneControl: Equatable, Sendable {
     case screenPower(on: Bool)
     /// Between portrait and landscape.
     case rotate
+    /// Asks for a key frame as the next video frame: a recording can only start from one.
+    case keyFrame
 
     static let maxTextBytes = 4_096
     static let maxClipboardBytes = 256 << 10
@@ -70,6 +72,8 @@ public enum PhoneControl: Equatable, Sendable {
             out.u8(on ? 1 : 0)
         case .rotate:
             type = "r"
+        case .keyFrame:
+            type = "v"
         }
         return Frame(type, out.data)
     }

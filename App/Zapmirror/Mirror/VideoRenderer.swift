@@ -9,6 +9,8 @@ final class VideoRenderer: @unchecked Sendable {
     let layer = AVSampleBufferDisplayLayer()
     private var format: CMVideoFormatDescription?
     private let queue = DispatchQueue(label: "Zapmirror video")
+    /// Gets every frame as well, and saves them while a recording is on.
+    let recorder = Recorder()
 
     init() {
         layer.videoGravity = .resizeAspect
@@ -24,8 +26,10 @@ final class VideoRenderer: @unchecked Sendable {
             case .config(let data):
                 format = Self.formatDescription(fromAnnexB: data)
                 if format == nil { mirrorLog.error("Couldn't read the video configuration (\(data.count) bytes)") }
-            case .frame(let data, _, _):
-                guard let format, let sample = Self.sampleBuffer(fromAnnexB: data, format: format) else { return }
+            case .frame(let data, let pts, let keyFrame):
+                guard let format, let avcc = Self.avcc(fromAnnexB: data) else { return }
+                recorder.video(avcc, pts: pts, keyFrame: keyFrame, format: format)
+                guard let sample = Self.sampleBuffer(avcc: avcc, format: format) else { return }
                 let renderer = layer.sampleBufferRenderer
                 if renderer.status == .failed {
                     mirrorLog.error("Video decoding failed: \(String(describing: renderer.error), privacy: .public); flushing")
@@ -82,7 +86,8 @@ final class VideoRenderer: @unchecked Sendable {
         return status == noErr ? format : nil
     }
 
-    static func sampleBuffer(fromAnnexB data: Data, format: CMVideoFormatDescription) -> CMSampleBuffer? {
+    /// The frame's NAL units with 4-byte lengths in place of start codes, which is what Core Media and MP4 use.
+    static func avcc(fromAnnexB data: Data) -> Data? {
         var avcc = Data()
         for unit in nalUnits(data) {
             let type = unit[unit.startIndex] & 0x1F
@@ -90,8 +95,13 @@ final class VideoRenderer: @unchecked Sendable {
             withUnsafeBytes(of: UInt32(unit.count).bigEndian) { avcc.append(contentsOf: $0) }
             avcc.append(unit)
         }
-        guard !avcc.isEmpty else { return nil }
+        return avcc.isEmpty ? nil : avcc
+    }
 
+    /// A sample buffer for one frame. For the screen, pass no time: it's shown as soon as it's decoded. For a
+    /// recording, pass the frame's time in the file and whether it's a key frame.
+    static func sampleBuffer(avcc: Data, format: CMVideoFormatDescription, time: CMTime? = nil,
+                             keyFrame: Bool = true) -> CMSampleBuffer? {
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: avcc.count,
                                                  blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
@@ -104,16 +114,29 @@ final class VideoRenderer: @unchecked Sendable {
 
         var sample: CMSampleBuffer?
         var size = avcc.count
-        guard CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
-                                        sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
-                                        sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample) == noErr,
-              let sample else { return nil }
-        // Show each frame as soon as it's decoded: lowest latency, no clock to drift.
+        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: time ?? .invalid, decodeTimeStamp: .invalid)
+        let status: OSStatus
+        if time == nil {
+            status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
+                                               sampleCount: 1, sampleTimingEntryCount: 0, sampleTimingArray: nil,
+                                               sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample)
+        } else {
+            status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
+                                               sampleCount: 1, sampleTimingEntryCount: 1, sampleTimingArray: &timing,
+                                               sampleSizeEntryCount: 1, sampleSizeArray: &size, sampleBufferOut: &sample)
+        }
+        guard status == noErr, let sample else { return nil }
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true),
            CFArrayGetCount(attachments) > 0 {
             let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
-            CFDictionarySetValue(dictionary, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+            if time == nil {
+                // Show each frame as soon as it's decoded: lowest latency, no clock to drift.
+                CFDictionarySetValue(dictionary, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                                     Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+            } else if !keyFrame {
+                CFDictionarySetValue(dictionary, Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(),
+                                     Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
+            }
         }
         return sample
     }

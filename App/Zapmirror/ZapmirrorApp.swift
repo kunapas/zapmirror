@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         snapshotIfRequested()
+        testRunIfRequested()
         DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.apple.screenIsLocked"),
                                                             object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.session.stop() }
@@ -54,6 +55,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let tiff = renderer.nsImage?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: String(path)))
             }
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// `--connect` mirrors the one ready phone without a click, and `--record=<seconds>` then records for that long
+    /// and quits. For testing with a real phone from the command line; neither is used in normal runs.
+    private func testRunIfRequested() {
+        let args = ProcessInfo.processInfo.arguments
+        let seconds = args.first { $0.hasPrefix("--record=") }.flatMap { Double($0.dropFirst(9)) }
+        guard args.contains("--connect") || seconds != nil else { return }
+        Task { @MainActor in
+            while devices.ready.count != 1 { try? await Task.sleep(for: .milliseconds(300)) }
+            session.start(devices.ready[0])
+            guard let seconds else { return }
+            while session.videoSize == nil { try? await Task.sleep(for: .milliseconds(300)) }
+            try? await Task.sleep(for: .seconds(2))
+            session.toggleRecording()
+            try? await Task.sleep(for: .seconds(seconds))
+            session.toggleRecording()
+            try? await Task.sleep(for: .seconds(3)) // let the file finish
             NSApp.terminate(nil)
         }
     }
@@ -85,6 +106,8 @@ struct PhoneCommands: Commands {
             Button(session.screenOff ? "Turn Phone Screen On" : "Turn Phone Screen Off") { session.setScreenOff(!session.screenOff) }
                 .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(off)
             Button("Rotate Phone") { session.send(.rotate) }.keyboardShortcut("r", modifiers: .command).disabled(off)
+            Button(session.isRecording ? "Stop Recording" : "Start Recording") { session.toggleRecording() }
+                .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(off)
             Divider()
             Button("Show Notifications") { session.send(.panel(.notifications)) }
                 .keyboardShortcut("n", modifiers: [.command, .shift]).disabled(off)

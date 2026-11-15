@@ -21,6 +21,12 @@ struct MirrorScreen: View {
             }
         }
         .navigationTitle(session.isActive ? session.deviceName : AppConfig.name)
+        .alert("The recording stopped", isPresented: Binding(get: { session.recordingProblem != nil },
+                                                            set: { if !$0 { session.recordingProblem = nil } })) {
+            Button("OK") { session.recordingProblem = nil }
+        } message: {
+            Text(session.recordingProblem ?? "")
+        }
         .onAppear { devices.start() }
         .onChange(of: devices.devices) {
             // Unplugged mid-session: end it.
@@ -43,6 +49,19 @@ struct PhoneToolbar: ToolbarContent {
                 .help("Recent apps (⇧⌘A)")
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            if let since = session.recordingSince {
+                Text(since, style: .timer)
+                    .monospacedDigit()
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Recording time")
+            }
+            Button { session.toggleRecording() } label: {
+                Label(session.isRecording ? "Stop Recording" : "Record",
+                      systemImage: session.isRecording ? "stop.circle.fill" : "record.circle")
+            }
+            .foregroundStyle(session.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+            .help(session.isRecording ? "Stop recording and show the file (⇧⌘R)"
+                                      : "Record the phone's screen and sound to a file in Movies (⇧⌘R)")
             Button { session.soundMuted.toggle() } label: {
                 Label(session.soundMuted ? "Unmute Phone Sound" : "Mute Phone Sound",
                       systemImage: session.soundMuted ? "speaker.slash" : "speaker")

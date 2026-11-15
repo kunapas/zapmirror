@@ -241,6 +241,7 @@ public final class Main {
                     }
                     case 'd': Phone.setScreenPower(p.get() != 0); break;
                     case 'r': Phone.rotate(); break;
+                    case 'v': Screen.requestKeyFrame(); break;
                     default: break; // from a newer Mac app: skip
                 }
             } catch (java.nio.BufferUnderflowException e) {

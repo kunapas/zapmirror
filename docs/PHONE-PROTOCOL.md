@@ -79,6 +79,7 @@ scaling.
 | `s` | u8 paste (0 or 1), text | sets the phone's clipboard, then pastes if asked |
 | `d` | u8: 0 off, 1 on | the phone's own screen; mirroring continues |
 | `r` | — | rotates between portrait and landscape |
+| `v` | — | makes the next video frame a key frame (the Mac started recording) |
 
 Phone → Mac:
 

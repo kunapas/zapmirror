@@ -7,6 +7,7 @@ import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.view.Surface;
@@ -38,6 +39,12 @@ final class Screen {
     }
 
     private static volatile Display current;
+    private static volatile boolean keyFrameWanted;
+
+    /** The Mac wants a frame it can start from (it began recording): the encoder sends one as its next frame. */
+    static void requestKeyFrame() {
+        keyFrameWanted = true;
+    }
 
     /** The last display state the video thread saw; touches are scaled to it. */
     static Display current() throws Exception {
@@ -82,7 +89,7 @@ final class Screen {
                 codec.start();
                 video.send('D', ByteBuffer.allocate(8).putInt(size[0]).putInt(size[1]).array());
                 Log.i("video " + size[0] + "×" + size[1] + " from " + display.width + "×" + display.height);
-                encode(codec, video, display);
+                encode(codec, video, display, mirror, surface);
             } finally {
                 try {
                     codec.stop();
@@ -96,11 +103,21 @@ final class Screen {
     }
 
     /** Sends encoded frames until the display changes size (returns) or the Mac goes away (throws). */
-    private static void encode(MediaCodec codec, Channel video, Display display) throws Exception {
+    private static void encode(MediaCodec codec, Channel video, Display display, Mirror mirror, Surface surface)
+            throws Exception {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         ByteBuffer header = ByteBuffer.allocate(9);
         long lastCheck = SystemClock.uptimeMillis();
         while (true) {
+            if (keyFrameWanted) {
+                keyFrameWanted = false;
+                Bundle now = new Bundle();
+                now.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
+                codec.setParameters(now);
+                // The encoder only makes a frame when the screen changes. A still screen would keep the Mac waiting,
+                // so have the display drawn again.
+                mirror.redraw(surface);
+            }
             int index = codec.dequeueOutputBuffer(info, 50_000);
             if (index >= 0) {
                 try {
@@ -197,6 +214,26 @@ final class Screen {
                 Hidden.call(sc, "closeTransaction");
             }
             return new Mirror(null, token);
+        }
+
+        /** Makes the system draw the mirrored display into `surface` again, which gives the encoder a new frame. */
+        void redraw(Surface surface) {
+            try {
+                if (virtualDisplay != null) {
+                    virtualDisplay.setSurface(null);
+                    virtualDisplay.setSurface(surface);
+                } else {
+                    Class<?> sc = Class.forName("android.view.SurfaceControl");
+                    Hidden.call(sc, "openTransaction");
+                    try {
+                        Hidden.call(sc, "setDisplaySurface", token, surface);
+                    } finally {
+                        Hidden.call(sc, "closeTransaction");
+                    }
+                }
+            } catch (Exception e) {
+                Log.w("couldn't redraw the mirror", e);
+            }
         }
 
         void release() {

@@ -7,6 +7,7 @@
 - The phone's screen, live, with its sound playing on your Mac.
 - Click, drag, scroll and type with your Mac's mouse and keyboard.
 - Copy and paste text between the phone and the Mac.
+- Record the phone's screen and sound to a video file.
 - No account, no ads, no telemetry. Zapmirror never touches the network.
 - Nothing to install on the phone, and no root.
 
@@ -50,6 +51,7 @@ In the mirror window:
 | Power button | ⇧⌘P |
 | Turn the phone's own screen off or on | ⇧⌘O |
 | Rotate | ⌘R |
+| Record the screen and sound | The Record button, or ⇧⌘R (again to stop) |
 | Notifications, quick settings | ⇧⌘N, ⌥⇧⌘N |
 | Copy from the phone to the Mac | Select on the phone, then ⌘C |
 | Paste from the Mac to the phone | ⌘V |
@@ -61,6 +63,9 @@ Good to know:
 - The phone stays awake while mirroring. Mirroring ends when you lock the Mac, put it to sleep or switch user,
   so an unattended phone goes back to locking itself.
 - Text copied on the phone reaches the Mac only when you press ⌘C in the mirror window.
+- Recordings are MP4 files in `Movies/Zapmirror`, shown in Finder when you stop. The video is the phone's own
+  stream, saved as it arrives, so recording costs almost nothing. If the phone rotates while recording, the
+  recording carries on in a new file ("… (2)"), because one video file can't change shape midway.
 
 ## Privacy and security
 

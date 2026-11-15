@@ -34,6 +34,18 @@ final class MirrorSession {
     }
     @ObservationIgnored private var connection: Connection?
 
+    /// When the current recording started; nil when not recording.
+    private(set) var recordingSince: Date?
+    /// Why a recording stopped by itself, to show the user; cleared when dismissed.
+    var recordingProblem: String?
+    var isRecording: Bool { recordingSince != nil }
+
+    init() {
+        renderer.recorder.onEvent = { [weak self] event in
+            Task { @MainActor in self?.recorderEvent(event) }
+        }
+    }
+
     var isActive: Bool {
         switch state {
         case .connecting, .mirroring: true
@@ -71,11 +83,56 @@ final class MirrorSession {
     }
 
     func stop() {
+        stopRecording(sessionEnding: true)
         connection?.close()
         connection = nil
         renderer.clear()
         audio.stop()
         if isActive { state = .idle }
+    }
+
+    // MARK: - Recording
+
+    /// Starts or stops saving the mirrored screen and sound to a file in Movies/Zapmirror.
+    func toggleRecording() {
+        if isRecording {
+            stopRecording()
+        } else if case .mirroring = state {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+            let folder = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent(AppConfig.name, isDirectory: true)
+            let name = "\(deviceName.isEmpty ? "Phone" : deviceName) \(formatter.string(from: Date())).mp4"
+            renderer.recorder.start(to: folder.appendingPathComponent(name.replacingOccurrences(of: "/", with: "-")))
+            send(.keyFrame) // the file has to begin with a key frame; don't wait for the next scheduled one
+            mirrorLog.notice("Recording requested")
+            recordingSince = Date()
+        }
+    }
+
+    /// `sessionEnding`: the phone is going away, so there's no closing frame to wait for.
+    private func stopRecording(sessionEnding: Bool = false) {
+        guard isRecording else { return }
+        if sessionEnding {
+            renderer.recorder.stop()
+        } else {
+            send(.keyFrame) // one more frame, stamped now, so the file runs right up to this moment
+            renderer.recorder.stop(afterNextFrame: true)
+        }
+        recordingSince = nil
+    }
+
+    private func recorderEvent(_ event: Recorder.Event) {
+        switch event {
+        case .saved(let url):
+            mirrorLog.notice("Saved a recording")
+            // Show the finished file, unless this was a part cut off by a rotation while recording carries on.
+            if !isRecording { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        case .failed(let message):
+            recordingSince = nil
+            recordingProblem = message
+            mirrorLog.error("Recording failed: \(message, privacy: .public)")
+        }
     }
 
     // MARK: - Input
@@ -138,6 +195,7 @@ final class MirrorSession {
 
     private func ended(_ ended: Connection, error: (any Error)?) {
         guard connection === ended else { return }
+        stopRecording(sessionEnding: true) // what was recorded so far is saved
         connection = nil
         renderer.clear()
         audio.stop()
@@ -268,10 +326,16 @@ final class Connection: @unchecked Sendable {
                         return
                     case .format(let format):
                         try player.start(rate: format.rate)
+                        renderer.recorder.soundAvailable(rate: format.rate)
                         mirrorLog.notice("Playing the phone's sound")
                     }
-                    while true { player.enqueue(try stream.next()) }
+                    while true {
+                        let samples = try stream.next()
+                        player.enqueue(samples)
+                        renderer.recorder.audio(samples)
+                    }
                 } catch {
+                    renderer.recorder.soundAvailable(rate: nil)
                     player.stop()
                 }
             }

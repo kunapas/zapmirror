@@ -64,6 +64,7 @@ private func bytes(_ control: PhoneControl) -> [UInt8] { [UInt8](control.frame.e
         #expect(bytes(.setClipboard("ok", paste: false)) == frame("s", [0] + Array("ok".utf8)))
         #expect(bytes(.screenPower(on: false)) == frame("d", [0]))
         #expect(bytes(.rotate) == frame("r", []))
+        #expect(bytes(.keyFrame) == frame("v", []))
     }
 
     @Test func keycodesForLettersAndDigits() {

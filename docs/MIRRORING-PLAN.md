@@ -38,7 +38,7 @@ They talk Zapmirror's own protocol, documented in docs/PHONE-PROTOCOL.md.
 | Stay awake | Keeps the phone awake while plugged in | A |
 | Audio forwarding (Android 11+) | Play phone audio on the Mac, mute toggle (⇧⌘M) | B (done) |
 | Drag & drop APK / file | Install apps; send files to Downloads | B |
-| Recording; screenshots | Record to MP4 (AVAssetWriter, no re-encode); screenshot to Desktop | B |
+| Recording; screenshots | Record to MP4 in Movies/Zapmirror (AVAssetWriter, video not re-encoded, sound as AAC), ⇧⌘R. Screenshots still to do | B (recording done) |
 | Pinch-to-zoom, two-finger tilt | Trackpad pinch → two virtual fingers | B |
 | Virtual display, start app | Open an app in its own window on the Mac | B |
 | Physical keyboard/mouse (HID), gamepad | Later, if wanted | C |

@@ -10,7 +10,7 @@ public enum PhoneServer {
     public static let devicePath = "/data/local/tmp/zapmirror-phone.jar"
     /// SHA-256 of the component this version of the app installs. The app refuses to install anything else, so a
     /// tampered jar in the bundle can't reach the phone. Scripts/build-phone.sh checks it and says how to update it.
-    public static let sha256 = "b6715bf7490b35229e074a0bece71d63ae08b9e7f6fd3b87f76a512ae41bfd58"
+    public static let sha256 = "2d7749db3e6c69cced83a6c7ffacd68e27a1bc60820e7b20fb4f28ae2e1eedf1"
     /// What the component prints once it accepts connections.
     public static let listeningLine = "zapmirror: listening"
 
