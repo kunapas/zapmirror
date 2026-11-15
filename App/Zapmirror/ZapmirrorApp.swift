@@ -14,6 +14,10 @@ struct ZapmirrorApp: App {
             ZapmirrorCommands()
             PhoneCommands(session: appDelegate.session)
         }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 
@@ -59,18 +63,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `--connect` mirrors the one ready phone without a click, and `--record=<seconds>` then records for that long
-    /// and quits. For testing with a real phone from the command line; neither is used in normal runs.
+    /// `--connect` mirrors the one ready phone without a click; `--screenshot` then takes a screenshot and quits, and
+    /// `--record=<seconds>` records for that long and quits. For testing with a real phone from the command line; neither is used in normal runs.
     private func testRunIfRequested() {
         let args = ProcessInfo.processInfo.arguments
         let seconds = args.first { $0.hasPrefix("--record=") }.flatMap { Double($0.dropFirst(9)) }
-        guard args.contains("--connect") || seconds != nil else { return }
+        let screenshot = args.contains("--screenshot")
+        guard args.contains("--connect") || seconds != nil || screenshot else { return }
         Task { @MainActor in
             while devices.ready.count != 1 { try? await Task.sleep(for: .milliseconds(300)) }
             session.start(devices.ready[0])
-            guard let seconds else { return }
+            guard seconds != nil || screenshot else { return }
             while session.videoSize == nil { try? await Task.sleep(for: .milliseconds(300)) }
             try? await Task.sleep(for: .seconds(2))
+            if screenshot {
+                session.takeScreenshot()
+                while session.takingScreenshot { try? await Task.sleep(for: .milliseconds(100)) }
+            }
+            guard let seconds else {
+                NSApp.terminate(nil)
+                return
+            }
             session.toggleRecording()
             try? await Task.sleep(for: .seconds(seconds))
             session.toggleRecording()
@@ -106,6 +119,8 @@ struct PhoneCommands: Commands {
             Button(session.screenOff ? "Turn Phone Screen On" : "Turn Phone Screen Off") { session.setScreenOff(!session.screenOff) }
                 .keyboardShortcut("o", modifiers: [.command, .shift]).disabled(off)
             Button("Rotate Phone") { session.send(.rotate) }.keyboardShortcut("r", modifiers: .command).disabled(off)
+            Button("Take Screenshot") { session.takeScreenshot() }
+                .keyboardShortcut("s", modifiers: [.command, .shift]).disabled(off)
             Button(session.isRecording ? "Stop Recording" : "Start Recording") { session.toggleRecording() }
                 .keyboardShortcut("r", modifiers: [.command, .shift]).disabled(off)
             Divider()

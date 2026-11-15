@@ -91,17 +91,72 @@ final class MirrorSession {
         if isActive { state = .idle }
     }
 
+    // MARK: - Screenshots
+
+    /// The screenshot just saved, shown briefly in the window; nil otherwise.
+    private(set) var lastScreenshot: URL?
+    /// Why a screenshot couldn't be taken, to show the user; cleared when dismissed.
+    var screenshotProblem: String?
+    private(set) var takingScreenshot = false
+
+    /// Saves a picture of the phone's screen to the screenshots folder (Pictures/Zapmirror unless changed in Settings). It's taken by the phone itself, at the phone's
+    /// full resolution, not from the (smaller, compressed) mirrored video.
+    func takeScreenshot() {
+        guard case .mirroring = state, let serial, !takingScreenshot else { return }
+        takingScreenshot = true
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        let folder = SaveLocation.screenshots.folder
+        let name = "\(deviceName.isEmpty ? "Phone" : deviceName) \(formatter.string(from: Date())).png"
+        let url = folder.appendingPathComponent(name.replacingOccurrences(of: "/", with: "-"))
+        let owner = self
+        Task.detached {
+            let result = Result { try Self.capture(serial: serial, to: url) }
+            await owner.screenshotFinished(result.map { url })
+        }
+    }
+
+    /// Runs Android's own `screencap`, which writes a PNG. `exec:` is adb's raw service: nothing rewrites the bytes.
+    private nonisolated static func capture(serial: String, to url: URL) throws {
+        let socket = try AdbClient().open("exec:screencap -p", on: serial)
+        defer { socket.close() }
+        let png = try socket.readToEnd()
+        guard png.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), png.count < 64 << 20 else {
+            throw AdbError.protocolError("the phone didn't return a picture")
+        }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try png.write(to: url, options: .atomic)
+    }
+
+    private func screenshotFinished(_ result: Result<URL, any Error>) {
+        takingScreenshot = false
+        switch result {
+        case .success(let url):
+            lastScreenshot = url
+            mirrorLog.notice("Saved a screenshot")
+            Task { // the "saved" note goes away by itself
+                try? await Task.sleep(for: .seconds(5))
+                if lastScreenshot == url { lastScreenshot = nil }
+            }
+        case .failure(let error):
+            screenshotProblem = error.localizedDescription
+            mirrorLog.error("Screenshot failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    func dismissScreenshotNote() { lastScreenshot = nil }
+
     // MARK: - Recording
 
-    /// Starts or stops saving the mirrored screen and sound to a file in Movies/Zapmirror.
+    /// Starts or stops saving the mirrored screen and sound to the recordings folder (Movies/Zapmirror unless changed
+    /// in Settings).
     func toggleRecording() {
         if isRecording {
             stopRecording()
         } else if case .mirroring = state {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-            let folder = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent(AppConfig.name, isDirectory: true)
+            let folder = SaveLocation.recordings.folder
             let name = "\(deviceName.isEmpty ? "Phone" : deviceName) \(formatter.string(from: Date())).mp4"
             renderer.recorder.start(to: folder.appendingPathComponent(name.replacingOccurrences(of: "/", with: "-")))
             send(.keyFrame) // the file has to begin with a key frame; don't wait for the next scheduled one

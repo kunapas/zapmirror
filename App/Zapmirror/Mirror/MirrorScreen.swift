@@ -14,6 +14,14 @@ struct MirrorScreen: View {
             case .mirroring:
                 MirrorView(session: session)
                     .toolbar { PhoneToolbar(session: session) }
+                    .overlay(alignment: .bottom) {
+                        if let url = session.lastScreenshot {
+                            ScreenshotNote(url: url) { session.dismissScreenshotNote() }
+                                .padding(.bottom, 14)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.2), value: session.lastScreenshot)
             case .connecting(let step):
                 StatusView(symbol: nil, title: "Connecting to \(session.deviceName)", message: step)
             case .idle, .failed:
@@ -21,6 +29,12 @@ struct MirrorScreen: View {
             }
         }
         .navigationTitle(session.isActive ? session.deviceName : AppConfig.name)
+        .alert("The screenshot wasn't saved", isPresented: Binding(get: { session.screenshotProblem != nil },
+                                                                  set: { if !$0 { session.screenshotProblem = nil } })) {
+            Button("OK") { session.screenshotProblem = nil }
+        } message: {
+            Text(session.screenshotProblem ?? "")
+        }
         .alert("The recording stopped", isPresented: Binding(get: { session.recordingProblem != nil },
                                                             set: { if !$0 { session.recordingProblem = nil } })) {
             Button("OK") { session.recordingProblem = nil }
@@ -33,6 +47,29 @@ struct MirrorScreen: View {
             let serials = Set(devices.devices.map(\.serial))
             if let serial = session.serial, session.isActive, !serials.contains(serial) { session.stop() }
         }
+    }
+}
+
+/// "Screenshot saved", over the bottom of the mirror for a few seconds, with a way to find the file.
+struct ScreenshotNote: View {
+    let url: URL
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Text("Screenshot saved")
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                dismiss()
+            }
+            .controlSize(.small)
+        }
+        .font(.callout)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
     }
 }
 
@@ -55,13 +92,16 @@ struct PhoneToolbar: ToolbarContent {
                     .foregroundStyle(.red)
                     .accessibilityLabel("Recording time")
             }
+            Button { session.takeScreenshot() } label: { Label("Screenshot", systemImage: "camera") }
+                .disabled(session.takingScreenshot)
+                .help("Save a picture of the phone's screen (⇧⌘S). Choose where in Settings.")
             Button { session.toggleRecording() } label: {
                 Label(session.isRecording ? "Stop Recording" : "Record",
                       systemImage: session.isRecording ? "stop.circle.fill" : "record.circle")
             }
             .foregroundStyle(session.isRecording ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
             .help(session.isRecording ? "Stop recording and show the file (⇧⌘R)"
-                                      : "Record the phone's screen and sound to a file in Movies (⇧⌘R)")
+                                      : "Record the phone's screen and sound to a video file (⇧⌘R). Choose where in Settings.")
             Button { session.soundMuted.toggle() } label: {
                 Label(session.soundMuted ? "Unmute Phone Sound" : "Mute Phone Sound",
                       systemImage: session.soundMuted ? "speaker.slash" : "speaker")
